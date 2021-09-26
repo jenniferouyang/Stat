@@ -1,0 +1,200 @@
+---
+title: "HW 02: Lemurs"
+author: "Jennifer Ouyang"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document: 
+    fig_height: 4
+    fig_width: 6
+---
+
+```{r setup}
+knitr::opts_chunk$set(warning = FALSE, 
+                      message = FALSE)
+```
+
+```{r load-packages}
+# load packages
+library(tidyverse)
+library(knitr)
+library(ggfortify)
+library(broom)
+library(viridis)
+```
+
+```{r load-data}
+# load data set
+lemurs <- readr::read_csv("data/lemurs-pcoq-ya.csv") %>%
+  mutate(obs_num = row_number())
+
+```
+
+
+
+age_at_wt_mo, weight_g
+
+## Exploratory data analysis
+```{r}
+#Univariate Data analysis
+lemurs %>%
+  ggplot(aes(x = weight_g)) + 
+  geom_histogram() + 
+  xlab("Animal Weight (in grams)") + 
+  ggtitle("Histogram of Lemurs Weight in Grams")
+
+```
+```{r}
+lemurs %>%
+  summarise(mean = mean(weight_g), 
+            median = median(weight_g),
+            sd = sd(weight_g),
+            IQR = IQR(weight_g),
+            min = min(weight_g),
+            max = max(weight_g)) %>% kable(digits = 3)
+
+
+```
+The distribution of the weight of lemurs seem to be mostly unimodal and slightly skewed to the right. The graph is mostly symmetric. However, there are a few outlier points with exeptionally high weight, at 10337 and 10245 grams. These outlier data points come from the same lemur called Sabina, with id 6117, 
+
+The mean is 3955.515 and the median is 3880. The mean is slightly higher than the median due to the outlier lemur. The spread is wide. The data ranges from 10337 to 2620. The standard deviation is large, at 549.884, and the IQR is 570. 
+
+```{r}
+lemurs %>%
+  ggplot(aes(x = age_at_wt_mo)) + 
+  geom_histogram() + 
+  xlab("Age (Month)") + 
+  ggtitle("Histogram of the Age of Lemurs when Weight was Taken")
+```
+```{r}
+lemurs %>%
+  summarise(mean = mean(age_at_wt_mo), 
+            median = median(age_at_wt_mo),
+            sd = sd(age_at_wt_mo),
+            IQR = IQR(age_at_wt_mo),
+            min = min(age_at_wt_mo),
+            max = max(age_at_wt_mo)) %>% kable(digits = 3)
+
+
+```
+
+The distribution is slightly skewed to the right, with a rather uniform distribution. There appear to be a small unimodal peak at around 38 months. There are no apparent outliers. 
+
+The mean is 46.136 and the median month is 45.21. The spread is wide based on the standard deviation value, which is 8.99, and the IQR is 15.325. The range is from 31.66 to 63.22.
+
+
+```{r}
+##Bivariate analysis
+
+lemurs %>%
+  ggplot(aes(x = age_at_wt_mo, y = weight_g)) + 
+           geom_point() +
+  ggtitle("Age of Lemurs (month) and their Weight (gram)") +
+  xlab("Age (month)") + ylab("Weight (Gram)") +
+  geom_smooth(method = "lm")
+```
+
+There seem to be a very weak positive linear relationship between the age of lemurs when their weight is measured versus their weight. There are also some outliers with much heavier weight that the model. 
+
+
+## Regression model
+Linear Regressison Model + equation
+```{r}
+model <- lm(weight_g ~ age_at_wt_mo, data = lemurs)
+tidy(model, conf.int = TRUE) %>% kable(digits = 3)
+```
+The regression equation is $$\hat{BodyWeight} = 3135.651 + 17.771	AgeInMonth $$
+
+## Model conditions
+```{r}
+autoplot(model, which = c(1,2), ncol = 2)
+```
+
+Since there is no distinguishable patterns in the Residuals vs Fitted plot, the linearity condition is satisfied. 
+
+Since the vertical spread of the residuals in the Residuals vs Fitted plot is approximately equal for all fitted values, the constant variance condition is also satisfied. However, there are a few outlier points with a residual value of larger than 6000, but in general the vertical spread is approximately equal. 
+
+The normality condition is not met according to the Normal Q-Q plot because the residuals do not follow a straight, diagonal line on the plot. However, the sample size is large enough at (1447 > 30).
+
+The independence condition is also not met, because each lemur is measured multiple times at different age. This fails the independence condition between the data points, because multiple belong to the same lemur. The data set should be filtered and the column dlc_id should composed of only unique values. 
+
+
+## Model diagnostics
+
+```{r}
+lemurs_aug <- augment(model) %>%
+mutate(obs_num = row_number())
+
+lemurs <- left_join(lemurs, lemurs_aug)
+
+leverage_threshold <- 2*(1 + 1) / nrow(lemurs)
+
+leverage_threshold
+```
+```{r}
+autoplot(model, which = 5, ncol = 1) +
+geom_vline(xintercept = leverage_threshold, color = "red")
+
+```
+
+```{r}
+l <- lemurs_aug %>%
+filter(.hat > leverage_threshold)
+
+l %>%
+kable(digits = 3)
+
+```
+```{r}
+nrow(l)
+```
+
+There are 58 observations with high leverages in the lemurs data set.
+```{r}
+autoplot(model, which = 3, ncol = 1) + 
+  geom_hline(yintercept = sqrt(3),
+             color = "red",linetype = "dotted")
+```
+```{r}
+high_resid_lemurs <- lemurs %>% 
+  filter(.std.resid < -3 |.std.resid > 3)
+
+nrow(high_resid_lemurs)
+```
+The standardized residual plot above shows that there are 11 data points with standardized residuals above 3 and below -3.
+
+```{r}
+autoplot(model, which = 4, ncol = 1) +
+  geom_hline(yintercept = 0.5, color = "red", lty = 2) +
+  geom_hline(yintercept = 1,color = "red")
+
+```
+The Cook's distance shows that non of the 58 points with high leverages and the 11 data points with high standardized residuals are above the threshold of 0.25. An observation with $D_i$ > 0.5 is considered to be moderately influential, and non of the potential outlier points are anywhere close that. 
+
+Based on the three diagnostics, there are no strong incentives to drop the observations with high leverages and high standardized residuals. Given that the context of the problem is to explore the growth rate for young adult lemurs at the Duke Lemur center, and given that the slope of the model is not significantly effected by the outliers, the observations should be kept to be mindful of potential lemurs that can grow much heavier than predicted. The lemur Sabina with much higher weight died early, probably due to health complications from its weight, but she is nevertheless a legitimate observation. 
+
+
+
+## Interpretations & conclusions
+```{r}
+model %>% tidy() %>% kable(digits = 3)
+```
+$$\hat{Weight} = 3135.651 + 17.771Month$$
+The linear regression model states that for every month increase in lemur's age, its weight will increase by 17.7 grams. 
+
+
+$$H_0: \beta = 0 \text{ vs. } H_a: \beta \neq 0$$
+A 2-sided hypothesis test is conducted. The null hypothesis states that there is no linear relationship between the age and the weight of lemurs. The alternative hypothesis states that there is a significant linear relationship between the age and weight of lemurs. 
+```{r}
+anova(model) %>% tidy()%>% kable(digits = 3)
+```
+
+There is a 95% confidence level that the slope that represents the relationship between age and weight of lemurs is between [14.750, 20.791]. 
+
+Given that the p value is approximately 0, the null hypothesis is rejected. The data set provides sufficient evidence that there is a meaningful linear relationship between the age and weight of lemurs. 
+
+```{r}
+36906511 / (400324606 + 36906511)
+```
+
+The value of $R^2$ is 0.0844. This signifies that 8.44% of the variance in the data can be explained by the linear regression model, which means that the model is not that useful in explaining the variance in the data. This is because the normality and independence conditions are not met. 
+
